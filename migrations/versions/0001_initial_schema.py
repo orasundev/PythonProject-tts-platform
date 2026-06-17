@@ -6,7 +6,6 @@ Create Date: 2024-01-01 00:00:00.000000
 """
 
 from typing import Sequence, Union
-
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
@@ -18,43 +17,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # ── Enums ─────────────────────────────────────────────────────────────
-    # op.execute("CREATE TYPE org_status_enum AS ENUM ('active', 'suspended')")
-    # op.execute("CREATE TYPE user_role_enum AS ENUM ('owner', 'admin', 'member')")
-    # op.execute("CREATE TYPE usage_status_enum AS ENUM ('success', 'error')")
-    # op.execute("CREATE TYPE job_status_enum AS ENUM ('pending', 'processing', 'completed', 'failed')")
-
-    # op.execute("CREATE TYPE IF NOT EXISTS org_status_enum AS ENUM ('active', 'suspended')")
-    # op.execute("CREATE TYPE IF NOT EXISTS user_role_enum AS ENUM ('owner', 'admin', 'member')")
-    # op.execute("CREATE TYPE IF NOT EXISTS usage_status_enum AS ENUM ('success', 'error')")
-    # op.execute("CREATE TYPE IF NOT EXISTS job_status_enum AS ENUM ('pending', 'processing', 'completed', 'failed')")
-
-    op.execute("""
-    DO $$ BEGIN
-        CREATE TYPE org_status_enum AS ENUM ('active', 'suspended');
-    EXCEPTION WHEN duplicate_object THEN NULL;
-    END $$;
-    """)
-    op.execute("""
-    DO $$ BEGIN
-        CREATE TYPE user_role_enum AS ENUM ('owner', 'admin', 'member');
-    EXCEPTION WHEN duplicate_object THEN NULL;
-    END $$;
-    """)
-    op.execute("""
-    DO $$ BEGIN
-        CREATE TYPE usage_status_enum AS ENUM ('success', 'error');
-    EXCEPTION WHEN duplicate_object THEN NULL;
-    END $$;
-    """)
-    op.execute("""
-    DO $$ BEGIN
-        CREATE TYPE job_status_enum AS ENUM ('pending', 'processing', 'completed', 'failed');
-    EXCEPTION WHEN duplicate_object THEN NULL;
-    END $$;
-    """)
-
-
+    # ── Create enums via DO block (idempotent) ────────────────────────────
+    op.execute("DO $$ BEGIN CREATE TYPE org_status_enum AS ENUM ('active', 'suspended'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
+    op.execute("DO $$ BEGIN CREATE TYPE user_role_enum AS ENUM ('owner', 'admin', 'member'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
+    op.execute("DO $$ BEGIN CREATE TYPE usage_status_enum AS ENUM ('success', 'error'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
+    op.execute("DO $$ BEGIN CREATE TYPE job_status_enum AS ENUM ('pending', 'processing', 'completed', 'failed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
 
     # ── organisations ─────────────────────────────────────────────────────
     op.create_table(
@@ -63,7 +30,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("slug", sa.String(100), nullable=False),
         sa.Column("logo_url", sa.Text, nullable=True),
-        sa.Column("status", sa.Enum("active", "suspended", name="org_status_enum"), nullable=False, server_default="active"),
+        sa.Column("status", sa.Text, nullable=False, server_default="active"),
         sa.Column("plan_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("stripe_customer_id", sa.String(255), nullable=True),
         sa.Column("stripe_subscription_id", sa.String(255), nullable=True),
@@ -84,7 +51,7 @@ def upgrade() -> None:
         sa.Column("email", sa.String(255), nullable=False),
         sa.Column("hashed_password", sa.String(255), nullable=False),
         sa.Column("full_name", sa.String(255), nullable=True),
-        sa.Column("role", sa.Enum("owner", "admin", "member", name="user_role_enum"), nullable=False, server_default="member"),
+        sa.Column("role", sa.Text, nullable=False, server_default="member"),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default="true"),
         sa.Column("is_email_verified", sa.Boolean, nullable=False, server_default="false"),
         sa.Column("is_superadmin", sa.Boolean, nullable=False, server_default="false"),
@@ -119,43 +86,18 @@ def upgrade() -> None:
     )
     op.create_index("ix_plans_name", "plans", ["name"], unique=True)
 
-    # Seed default plans
-    # op.execute("""
-    #     INSERT INTO plans (id, name, monthly_char_limit, max_api_keys, allows_ssml,
-    #         allows_all_voices, allows_webhooks, allows_priority_queue,
-    #         file_retention_days, price_cents, description)
-    #     VALUES
-    #         (gen_random_uuid(), 'free',     10000,  1,  false, false, false, false,  7, 0,
-    #          '10,000 chars/month, 3 voices, 1 API key'),
-    #         (gen_random_uuid(), 'pro',      500000, 10, true,  true,  false, false,  30, 2900,
-    #          '500,000 chars/month, all voices, SSML, 10 API keys — $29/month'),
-    #         (gen_random_uuid(), 'business', -1,     50, true,  true,  true,  true,   90, 9900,
-    #          'Unlimited chars, all voices, SSML, webhooks, priority queue — $99/month')
-    # """)
-
+    # Seed the three default plans
     op.execute("""
-    DO $$ BEGIN
-        CREATE TYPE org_status_enum AS ENUM ('active', 'suspended');
-    EXCEPTION WHEN duplicate_object THEN NULL;
-    END $$;
-    """)
-    op.execute("""
-    DO $$ BEGIN
-        CREATE TYPE user_role_enum AS ENUM ('owner', 'admin', 'member');
-    EXCEPTION WHEN duplicate_object THEN NULL;
-    END $$;
-    """)
-    op.execute("""
-    DO $$ BEGIN
-        CREATE TYPE usage_status_enum AS ENUM ('success', 'error');
-    EXCEPTION WHEN duplicate_object THEN NULL;
-    END $$;
-    """)
-    op.execute("""
-    DO $$ BEGIN
-        CREATE TYPE job_status_enum AS ENUM ('pending', 'processing', 'completed', 'failed');
-    EXCEPTION WHEN duplicate_object THEN NULL;
-    END $$;
+        INSERT INTO plans (id, name, monthly_char_limit, max_api_keys, allows_ssml,
+            allows_all_voices, allows_webhooks, allows_priority_queue,
+            file_retention_days, price_cents, description)
+        VALUES
+            (gen_random_uuid(), 'free',     10000,  1,  false, false, false, false,  7, 0,
+             '10,000 chars/month, 3 voices, 1 API key'),
+            (gen_random_uuid(), 'pro',      500000, 10, true,  true,  false, false,  30, 2900,
+             '500,000 chars/month, all voices, SSML, 10 API keys - $29/month'),
+            (gen_random_uuid(), 'business', -1,     50, true,  true,  true,  true,   90, 9900,
+             'Unlimited chars, all voices, SSML, webhooks, priority queue - $99/month')
     """)
 
     # ── api_keys ──────────────────────────────────────────────────────────
@@ -190,7 +132,7 @@ def upgrade() -> None:
         sa.Column("voice", sa.String(100), nullable=False),
         sa.Column("character_count", sa.Integer, nullable=False),
         sa.Column("duration_ms", sa.Integer, nullable=True),
-        sa.Column("status", sa.Enum("success", "error", name="usage_status_enum"), nullable=False),
+        sa.Column("status", sa.Text, nullable=False),
         sa.Column("error_message", sa.String(500), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
@@ -224,7 +166,7 @@ def upgrade() -> None:
         sa.Column("organisation_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False),
         sa.Column("invited_by_user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("email", sa.String(255), nullable=False),
-        sa.Column("role", sa.Enum("owner", "admin", "member", name="user_role_enum"), nullable=False),
+        sa.Column("role", sa.Text, nullable=False),
         sa.Column("token", sa.String(255), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=True),
@@ -256,7 +198,7 @@ def upgrade() -> None:
         sa.Column("organisation_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False),
         sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
         sa.Column("celery_task_id", sa.String(255), nullable=True),
-        sa.Column("status", sa.Enum("pending", "processing", "completed", "failed", name="job_status_enum"), nullable=False, server_default="pending"),
+        sa.Column("status", sa.Text, nullable=False, server_default="pending"),
         sa.Column("result_s3_key", sa.String(512), nullable=True),
         sa.Column("error_message", sa.Text, nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -265,6 +207,32 @@ def upgrade() -> None:
     op.create_index("ix_jobs_organisation_id", "jobs", ["organisation_id"])
     op.create_index("ix_jobs_created_at", "jobs", ["created_at"])
 
+    # ── Cast text columns to their proper enum types ───────────────────────
+    # op.execute("ALTER TABLE organisations ALTER COLUMN status TYPE org_status_enum USING status::org_status_enum")
+    # op.execute("ALTER TABLE users ALTER COLUMN role TYPE user_role_enum USING role::user_role_enum")
+    # op.execute("ALTER TABLE usage_logs ALTER COLUMN status TYPE usage_status_enum USING status::usage_status_enum")
+    # op.execute("ALTER TABLE jobs ALTER COLUMN status TYPE job_status_enum USING status::job_status_enum")
+    # op.execute("ALTER TABLE invitations ALTER COLUMN role TYPE user_role_enum USING role::user_role_enum")
+    #
+
+# ── Cast text columns to their proper enum types ───────────────────────
+    # Must drop server_default before altering type, then re-add it
+
+    op.execute("ALTER TABLE organisations ALTER COLUMN status DROP DEFAULT")
+    op.execute("ALTER TABLE organisations ALTER COLUMN status TYPE org_status_enum USING status::org_status_enum")
+    op.execute("ALTER TABLE organisations ALTER COLUMN status SET DEFAULT 'active'::org_status_enum")
+
+    op.execute("ALTER TABLE users ALTER COLUMN role DROP DEFAULT")
+    op.execute("ALTER TABLE users ALTER COLUMN role TYPE user_role_enum USING role::user_role_enum")
+    op.execute("ALTER TABLE users ALTER COLUMN role SET DEFAULT 'member'::user_role_enum")
+
+    op.execute("ALTER TABLE usage_logs ALTER COLUMN status TYPE usage_status_enum USING status::usage_status_enum")
+
+    op.execute("ALTER TABLE jobs ALTER COLUMN status DROP DEFAULT")
+    op.execute("ALTER TABLE jobs ALTER COLUMN status TYPE job_status_enum USING status::job_status_enum")
+    op.execute("ALTER TABLE jobs ALTER COLUMN status SET DEFAULT 'pending'::job_status_enum")
+
+    op.execute("ALTER TABLE invitations ALTER COLUMN role TYPE user_role_enum USING role::user_role_enum")
 
 def downgrade() -> None:
     op.drop_table("jobs")
